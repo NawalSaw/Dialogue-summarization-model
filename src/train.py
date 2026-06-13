@@ -71,9 +71,9 @@ def evaluate_model(model, tokenizer, max_len, validation_dataset, device, print_
             target_text = batch["trg_text"][0]
             model_out_text = tokenizer.decode(model_out.detach().cpu().numpy())
 
-            print_msg(f"{print_msg('SOURCE'):50s} {source_text}")
-            print_msg(f"{print_msg('TARGET'):50s} {target_text}")
-            print_msg(f"{print_msg('PREDICTED'):50s} {model_out_text}")
+            print_msg(f"{'SOURCE':>12}: {source_text}")
+            print_msg(f"{'TARGET':>12}: {target_text}")
+            print_msg(f"{'PREDICTED':>12}: {model_out_text}")
 
             print_msg("=" * console_width)
             
@@ -103,8 +103,8 @@ def get_dataset_tokenizer(config):
         max_length_tgt = max(max_length_tgt, len(tgt_ids))
     
     train_dataloader = DataLoader(train_dataset, batch_size=config["batch_size"], shuffle=True)
-    val_dataloader = DataLoader(val_dataset, batch_size=config["batch_size"], shuffle=True)
-    test_dataloader = DataLoader(test_dataset, batch_size=config["batch_size"], shuffle=True)
+    val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=False)
+    test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
     return train_dataloader, val_dataloader, test_dataloader, tokenizer
 
@@ -178,6 +178,14 @@ def train_model(config):
             global_step += 1
         
         evaluate_model(model, tokenizer, config["seq_len"], val_dataloader, device, lambda x: batch_iter.write(x))
+
+        checkpoint_path = get_weights_path(config, f"{epoch:02d}")
+        torch.save({
+            "epoch": epoch,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimiser.state_dict(),
+            "global_step": global_step
+        }, checkpoint_path)
 
     model_path = get_weights_path(config, f"final_{epoch}")
     torch.save({
