@@ -1,0 +1,89 @@
+# ====================================================================
+# PYTHON CACHE & COMPILED FILES
+# ====================================================================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# ====================================================================
+# VIRTUAL ENVIRONMENTS
+# ====================================================================
+# Ignore local environments to keep the repository lightweight
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ====================================================================
+# ENVIRONMENT VARIABLES & SECRETS
+# ====================================================================
+# Never commit raw passwords, private tokens, or API secret keys
+.env.local
+.env.*.local
+*.env
+secrets.toml
+
+# ====================================================================
+# POPULAR IDEs & EDITORS
+# ====================================================================
+# Visual Studio Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# PyCharm / IntelliJ IDEA
+.idea/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# ====================================================================
+# PACKAGING, BUILDS, AND DISTRIBUTIONS
+# ====================================================================
+# Distribution / packaging artifacts
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ====================================================================
+# TESTING, COVERAGE, AND LINTING
+# ====================================================================
+# Inline test suites and coverage reports
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.hypothesis/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
