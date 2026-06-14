@@ -14,3 +14,4 @@ class LayerNorm(nn.Module):
         mean = x.mean(dim=-1, keepdim=True)
         var = x.var(dim=-1, keepdim=True, unbiased=False)
         return self.gamma * (x - mean) / torch.sqrt(var + self.eps) + self.beta 
+

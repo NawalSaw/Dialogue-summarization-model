@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from torch.optim.lr_scheduler import LambdaLR
 
 from pathlib import Path
 
@@ -39,13 +40,13 @@ def greedy_decode(model, tokenizer, source, source_mask, max_len, device):
         next_token_probs = model.project(decoder_output[:, -1, :]) # shape (1, vocab_size)
         _, next_token = torch.max(next_token_probs, dim=-1, keepdim=True) # shape (1, 1)
         
+        # Append to decoder input
+        decoder_input = torch.cat([decoder_input, torch.empty(1, 1, dtype=torch.int64, device=device).type_as(source).fill_(next_token.item())], dim=1)
+    
         # Check for EOS
         if next_token.item() == eos_token_id:
             break
             
-        # Append to decoder input
-        decoder_input = torch.cat([decoder_input, torch.empty(1, 1, dtype=torch.int64, device=device).type_as(source).fill_(next_token.item())], dim=1)
-    
     return decoder_input.squeeze(0)
     
 def evaluate_model(model, tokenizer, max_len, validation_dataset, device, print_msg, num_example=2):
@@ -112,6 +113,18 @@ def get_model(config, vocab_size):
     model = build_transformer(config["d_model"], config["heads_num"], config["dropout"], vocab_size, config["num_layers"], config["seq_len"])
     return model
 
+# 3. Define the scheduling mathematical logic
+def lr_lambda(current_step: int, warmup_steps: int, total_training_steps: int):
+    # Phase 1: Linear Warmup
+    if current_step < warmup_steps:
+        return float(current_step) / float(max(1, warmup_steps))
+    
+    # Phase 2: Cosine Decay down to 10% of peak LR
+    progress = float(current_step - warmup_steps) / float(max(1, total_training_steps - warmup_steps))
+    import math
+    cosine_decay = 0.5 * (1.0 + math.cos(math.pi * progress))
+    return max(0.1, cosine_decay) # Prevents LR from dropping all the way to absolute 0
+
 def train_model(config):
     # Set the device
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -124,7 +137,17 @@ def train_model(config):
 
     writer = SummaryWriter(config["experiment_name"])
 
-    optimiser = torch.optim.Adam(model.parameters(), lr=config["lr"], eps=1e-9)
+    # Calculate steps
+    num_batches_per_epoch = len(train_dataloader)
+    total_training_steps = config["num_epochs"] * num_batches_per_epoch
+    warmup_steps = int(total_training_steps * config["warmup_ratio"])
+
+    optimiser = torch.optim.AdamW(model.parameters(), lr=config["lr"], eps=1e-9, weight_decay=0.01)
+    scheduler = LambdaLR(optimiser, lambda current_step: lr_lambda(current_step, warmup_steps, total_training_steps))
+
+
+    print(f"Total training steps: {total_training_steps}")
+    print(f"Warmup steps: {warmup_steps}")
 
     intial_epoch = 0
     global_step = 0
@@ -140,6 +163,9 @@ def train_model(config):
         state = torch.load(model_filename)
         model.load_state_dict(state['model_state_dict'])
 
+        scheduler.load_state_dict(state['scheduler_state_dict'])
+        print("Preloaded scheduler state successfully.")
+
         intial_epoch = state['epoch'] + 1
         optimiser.load_state_dict(state['optimizer_state_dict'])
 
@@ -149,7 +175,7 @@ def train_model(config):
 
     loss_fn = torch.nn.CrossEntropyLoss(ignore_index=tokenizer.token_to_id('[PAD]'), label_smoothing=0.1).to(device)
 
-    for epoch in tqdm(range(intial_epoch, config["num_epochs"])):
+    for epoch in range(intial_epoch, config["num_epochs"]):
         model.train()
         batch_iter = tqdm(train_dataloader, desc=f"Epoch {epoch}")
 
@@ -166,22 +192,33 @@ def train_model(config):
             proj_output = model.project(decoder_output) # (batch_size, seq_len, vocab_size)
             
             loss = loss_fn(proj_output.reshape(-1, tokenizer.get_vocab_size()), label.reshape(-1))
-            batch_iter.set_postfix({"loss": f"{loss.item():6.3f}"})
 
             writer.add_scalar('train_loss', loss.item(), global_step)
-            writer.flush()
 
             loss.backward()
+
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
             optimiser.step()
+            scheduler.step()
             optimiser.zero_grad()
 
             global_step += 1
+
+            # NEW: Track current learning rate in TensorBoard to verify it works
+            current_lr = optimiser.param_groups[0]["lr"]
+            writer.add_scalar('learning_rate', current_lr, global_step)
+            
+            # Optional: Display current LR in progress bar
+            batch_iter.set_postfix({"loss": f"{loss.item():6.3f}", "lr": f"{current_lr:.2e}"})
+            writer.flush()
 
         checkpoint_path = get_weights_path(config, epoch)
         torch.save({
             "epoch": epoch,
             "model_state_dict": model.state_dict(),
             "optimizer_state_dict": optimiser.state_dict(),
+            "scheduler_state_dict": scheduler.state_dict(), # Add this
             "global_step": global_step
         }, checkpoint_path)
 
@@ -192,6 +229,7 @@ def train_model(config):
         'epoch': epoch,
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimiser.state_dict(),
+        'scheduler_state_dict': scheduler.state_dict(),
         'global_step': global_step
     }, model_path)
 
