@@ -60,8 +60,8 @@ def evaluate_model(model, tokenizer, max_len, validation_dataset, device, print_
                 break
             count += 1
 
-            encoder_input = batch["encoder_input"]
-            encoder_mask = batch["encoder_mask"]
+            encoder_input = batch["encoder_input"].to(device)
+            encoder_mask = batch["encoder_mask"].to(device)
 
             assert encoder_input.size(0) == 1, "Batch size must be 1 for evaluation"
 
@@ -149,9 +149,9 @@ def train_model(config):
 
     loss_fn = torch.nn.CrossEntropyLoss(ignore_index=tokenizer.token_to_id('[PAD]'), label_smoothing=0.1).to(device)
 
-    for epoch in range(intial_epoch, config["num_epochs"]):
+    for epoch in tqdm(range(intial_epoch, config["num_epochs"])):
         model.train()
-        batch_iter = tqdm(train_dataloader, desc=f"Epoch {epoch:02d}")
+        batch_iter = tqdm(train_dataloader, desc=f"Epoch {epoch}")
 
         for batch in batch_iter:
             encoder_input = batch["encoder_input"].to(device)
@@ -176,16 +176,16 @@ def train_model(config):
             optimiser.zero_grad()
 
             global_step += 1
-        
-        evaluate_model(model, tokenizer, config["seq_len"], val_dataloader, device, lambda x: batch_iter.write(x))
 
-        checkpoint_path = get_weights_path(config, f"{epoch:02d}")
+        checkpoint_path = get_weights_path(config, f"{epoch}")
         torch.save({
             "epoch": epoch,
             "model_state_dict": model.state_dict(),
             "optimizer_state_dict": optimiser.state_dict(),
             "global_step": global_step
         }, checkpoint_path)
+
+        evaluate_model(model, tokenizer, config["seq_len"], val_dataloader, device, lambda x: batch_iter.write(x))
 
     model_path = get_weights_path(config, f"final_{epoch}")
     torch.save({
