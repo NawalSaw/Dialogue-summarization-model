@@ -19,6 +19,10 @@ class DecoderLayer(nn.Module):
             d_model=d_model,
             num_heads=num_heads
         )
+        self.cross_attention = MultiHeadAttention(
+            d_model=d_model,
+            num_heads=num_heads
+        )
 
         self.ffn = FeedForward(
             d_model,
@@ -39,8 +43,9 @@ class DecoderLayer(nn.Module):
         tgt_mask
     ):
 
-        ############### Multi Head Attention ##################
+        ############### Self Attention ##################
 
+        residual = x
         x = self.norm1(x)
         attn = self.self_attention(
             x,
@@ -49,26 +54,28 @@ class DecoderLayer(nn.Module):
             tgt_mask
         )
         attn = self.dropout(attn)
-        x = x + attn
+        x = residual + attn
 
         ############### Cross Attention ##################
 
+        residual = x
         x = self.norm2(x)
-        attn = self.self_attention(
+        attn = self.cross_attention(
             x,
             encoder_output,
             encoder_output,
             src_mask
         )
         attn = self.dropout(attn)
-        x = x + attn
+        x = residual + attn
 
         ############### Feed Forward Network ##################
         
+        residual = x
         x = self.norm3(x)
         ffn = self.ffn(x)
         ffn = self.dropout(ffn)
-        x = x + ffn
+        x = residual + ffn
 
         return x
 
