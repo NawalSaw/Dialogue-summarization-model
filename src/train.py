@@ -177,7 +177,7 @@ def train_model(config):
 
             global_step += 1
 
-        checkpoint_path = get_weights_path(config, f"{epoch}")
+        checkpoint_path = get_weights_path(config, epoch)
         torch.save({
             "epoch": epoch,
             "model_state_dict": model.state_dict(),
@@ -187,7 +187,7 @@ def train_model(config):
 
         evaluate_model(model, tokenizer, config["seq_len"], val_dataloader, device, lambda x: batch_iter.write(x))
 
-    model_path = get_weights_path(config, f"final_{epoch}")
+    model_path = get_weights_path(config, epoch)
     torch.save({
         'epoch': epoch,
         'model_state_dict': model.state_dict(),
