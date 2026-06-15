@@ -1,7 +1,7 @@
 from tokenizers import Tokenizer, normalizers
 from tokenizers.trainers import BpeTrainer
 from tokenizers.models import BPE
-from tokenizers.pre_tokenizers import Whitespace
+from tokenizers.pre_tokenizers import Sequence, WhitespaceSplit, Punctuation
 from tokenizers.normalizers import Lowercase, NFD, StripAccents
 
 from pathlib import Path
@@ -23,10 +23,13 @@ def get_or_create_tokenizer(config, dataset, batch_size=1000):
     
     if not tokenizer_path.exists():
         tokenizer = Tokenizer(BPE(unk_token="[UNK]"))
-        tokenizer.pre_tokenizer = Whitespace()
+        tokenizer.pre_tokenizer = Sequence([
+            WhitespaceSplit(),
+            Punctuation()
+        ])
         tokenizer.normalizer = normalizers.Sequence([NFD(), Lowercase(), StripAccents()])
 
-        trainer = BpeTrainer(special_tokens=["[UNK]", "[PAD]", "[BOS]", "[EOS]"], min_frequency=2)
+        trainer = BpeTrainer(special_tokens=["[UNK]", "[PAD]", "[BOS]", "[EOS]"], vocab_size=16000, min_frequency=2)
 
         tokenizer.train_from_iterator(get_corpus(dataset, batch_size), trainer=trainer)
 

@@ -145,13 +145,12 @@ def train_model(config):
     optimiser = torch.optim.AdamW(model.parameters(), lr=config["lr"], eps=1e-9, weight_decay=0.01)
     scheduler = LambdaLR(optimiser, lambda current_step: lr_lambda(current_step, warmup_steps, total_training_steps))
 
-
     print(f"Total training steps: {total_training_steps}")
     print(f"Warmup steps: {warmup_steps}")
 
     intial_epoch = 0
     global_step = 0
-
+                
     num_params = sum(p.numel() for p in model.parameters())
     print(f"Number of parameters: {num_params:,}")
     print(f"vocabulary size: {tokenizer.get_vocab_size()}")

@@ -15,7 +15,7 @@ def get_config():
         'num_epochs': 10,
         "tokenizer_path": "models/tokenizer.json",
         "experiment_name": "runs/tmodel",
-        "warmup_ratio": 0.1
+        "warmup_ratio": 0.05
         
     }
 
