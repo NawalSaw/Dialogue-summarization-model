@@ -8,7 +8,7 @@ from feed_forward_net.projection_layer import ProjectionLayer
 from positional_encoding.sinosuidal import SinusoidalPositionalEncoding
 
 class Transformer(nn.Module): 
-    def __init__(self, d_model, heads_num, dropout, vocab_size, num_layers, seq_len):
+    def __init__(self, d_model, heads_num, dropout, vocab_size, num_layers, src_seq_len, tgt_seq_len):
         super().__init__()
         self.d_model = d_model
         self.heads_num = heads_num
@@ -19,8 +19,8 @@ class Transformer(nn.Module):
         self.src_embedding = Embedding(d_model, vocab_size)
         self.tgt_embedding = Embedding(d_model, vocab_size)
 
-        self.src_positional_encoding = SinusoidalPositionalEncoding(d_model, seq_len=seq_len, dropout=dropout)
-        self.tgt_positional_encoding = SinusoidalPositionalEncoding(d_model, seq_len=seq_len, dropout=dropout)
+        self.src_positional_encoding = SinusoidalPositionalEncoding(d_model, seq_len=src_seq_len, dropout=dropout)
+        self.tgt_positional_encoding = SinusoidalPositionalEncoding(d_model, seq_len=tgt_seq_len, dropout=dropout)
         
         self.encoder = Encoder(d_model, num_heads=heads_num, d_ff=self.d_ff, num_layers=num_layers, dropout=dropout)
         self.decoder = Decoder(d_model, heads_num=heads_num, d_ff=self.d_ff, num_layers=num_layers, dropout=dropout)
@@ -52,8 +52,8 @@ class Transformer(nn.Module):
 
         return output
 
-def build_transformer(d_model, heads_num, dropout, vocab_size, num_layers, seq_len):
-    model = Transformer(d_model, heads_num, dropout, vocab_size, num_layers, seq_len)
+def build_transformer(d_model, heads_num, dropout, vocab_size, num_layers, src_seq_len, tgt_seq_len):
+    model = Transformer(d_model, heads_num, dropout, vocab_size, num_layers, src_seq_len, tgt_seq_len)
 
     for p in model.parameters():
         if p.dim() > 1:

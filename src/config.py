@@ -2,20 +2,21 @@ from pathlib import Path
 
 def get_config():
     return {
-        'lr': 1e-4, 
+        'lr': 3e-4, 
         "d_model": 256,
-        "heads_num": 2,
-        "dropout": 0.2,
-        "num_layers": 2,
-        "seq_len": 1400,
+        "heads_num": 4,
+        "dropout": 0.1,
+        "num_layers": 4,
+        "src_seq_len": 512 + 2, # +2 for [BOS] and [EOS]
+        "tgt_seq_len": 80 + 1, # +1 for [EOS]
         "batch_size": 8,
         "model_folder": "weights",
         "model_basename": "tmodel_",
         "preload": None,
-        'num_epochs': 10,
+        'num_epochs': 20,
         "tokenizer_path": "models/tokenizer.json",
         "experiment_name": "runs/tmodel",
-        "warmup_ratio": 0.05
+        "warmup_ratio": 0.10
         
     }
 

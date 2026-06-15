@@ -15,7 +15,7 @@ from transformer import build_transformer
 from config import get_config
 from config import get_weights_path
 
-def greedy_decode(model, tokenizer, source, source_mask, max_len, device):
+def greedy_decode(model, tokenizer, source, source_mask, src_seq_len, tgt_seq_len, device):
     bos_token_id = tokenizer.token_to_id("[BOS]")
     eos_token_id = tokenizer.token_to_id("[EOS]")
     
@@ -27,7 +27,7 @@ def greedy_decode(model, tokenizer, source, source_mask, max_len, device):
     
     # Generate tokens
     while True:
-        if decoder_input.size(1) > max_len:
+        if decoder_input.size(1) >= tgt_seq_len:
             break
 
         # Prepare decoder mask
@@ -49,7 +49,7 @@ def greedy_decode(model, tokenizer, source, source_mask, max_len, device):
             
     return decoder_input.squeeze(0)
     
-def evaluate_model(model, tokenizer, max_len, validation_dataset, device, print_msg, num_example=2):
+def evaluate_model(model, tokenizer, src_seq_len, tgt_seq_len, validation_dataset, device, print_msg, num_example=2):
     model.eval()
     count = 0
 
@@ -66,7 +66,7 @@ def evaluate_model(model, tokenizer, max_len, validation_dataset, device, print_
 
             assert encoder_input.size(0) == 1, "Batch size must be 1 for evaluation"
 
-            model_out = greedy_decode(model, tokenizer, encoder_input, encoder_mask, max_len, device)
+            model_out = greedy_decode(model, tokenizer, encoder_input, encoder_mask, src_seq_len, tgt_seq_len, device)
             
             source_text = batch["src_text"][0]
             target_text = batch["trg_text"][0]
@@ -85,24 +85,24 @@ def get_dataset_tokenizer(config):
     val_dataset = dataset['validation']
     test_dataset = dataset['test']
 
-    com_dataset = concatenate_datasets([dataset['train'], dataset["validation"], dataset["test"]])
-
+    com_dataset = concatenate_datasets([train_dataset, val_dataset, test_dataset])
     tokenizer = get_or_create_tokenizer(config, com_dataset, config["batch_size"])
 
-    train_dataset = SamsumDataset(train_dataset, tokenizer, config["seq_len"])
-    val_dataset = SamsumDataset(val_dataset, tokenizer, config["seq_len"])
-    test_dataset = SamsumDataset(test_dataset, tokenizer, config["seq_len"])
+    ### Filtering ###
+    def keep_example(example):
+        src_len = len(tokenizer.encode(example["dialogue"]).ids)
+        tgt_len = len(tokenizer.encode(example["summary"]).ids)
 
-    max_length_src = 0
-    max_length_tgt = 0
+        return src_len <= 481 and tgt_len <= 65
     
-    for item in com_dataset:
-        src_ids = tokenizer.encode(item["dialogue"]).ids
-        tgt_ids = tokenizer.encode(item["summary"]).ids
+    filtered_train = train_dataset.filter(keep_example)
+    filtered_val = val_dataset.filter(keep_example)
+    filtered_test = test_dataset.filter(keep_example)
 
-        max_length_src = max(max_length_src, len(src_ids))
-        max_length_tgt = max(max_length_tgt, len(tgt_ids))
-    
+    train_dataset = SamsumDataset(filtered_train, tokenizer, config["src_seq_len"], config["tgt_seq_len"])
+    val_dataset = SamsumDataset(filtered_val, tokenizer, config["src_seq_len"], config["tgt_seq_len"])
+    test_dataset = SamsumDataset(filtered_test, tokenizer, config["src_seq_len"], config["tgt_seq_len"])
+
     train_dataloader = DataLoader(train_dataset, batch_size=config["batch_size"], shuffle=True)
     val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=False)
     test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False)
@@ -110,7 +110,7 @@ def get_dataset_tokenizer(config):
     return train_dataloader, val_dataloader, test_dataloader, tokenizer
 
 def get_model(config, vocab_size):
-    model = build_transformer(config["d_model"], config["heads_num"], config["dropout"], vocab_size, config["num_layers"], config["seq_len"])
+    model = build_transformer(config["d_model"], config["heads_num"], config["dropout"], vocab_size, config["num_layers"], config["src_seq_len"], config["tgt_seq_len"])
     return model
 
 # 3. Define the scheduling mathematical logic
@@ -221,7 +221,7 @@ def train_model(config):
             "global_step": global_step
         }, checkpoint_path)
 
-        evaluate_model(model, tokenizer, config["seq_len"], val_dataloader, device, lambda x: batch_iter.write(x))
+        evaluate_model(model, tokenizer, config["src_seq_len"], config["tgt_seq_len"], val_dataloader, device, lambda x: batch_iter.write(x))
 
     model_path = get_weights_path(config, epoch)
     torch.save({

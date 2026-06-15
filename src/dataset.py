@@ -1,14 +1,14 @@
 import torch
-import torch.nn as nn
 from torch.utils.data import Dataset
 
 class SamsumDataset(Dataset):
-    def __init__(self, dataset, tokenizer, seq_len):
+    def __init__(self, dataset, tokenizer, src_seq_len, tgt_seq_len):
         super().__init__()
 
         self.dataset = dataset 
         self.tokenizer = tokenizer
-        self.seq_len = seq_len
+        self.src_seq_len = src_seq_len
+        self.tgt_seq_len = tgt_seq_len
 
         self.pad_token =torch.tensor([tokenizer.token_to_id("[PAD]")], dtype=torch.int64)
         self.bos_token = torch.tensor([tokenizer.token_to_id("[BOS]")], dtype=torch.int64)
@@ -25,8 +25,8 @@ class SamsumDataset(Dataset):
         src_encoded = self.tokenizer.encode(src_text)
         tgt_encoded = self.tokenizer.encode(tgt_text)
         
-        enc_num_padding_tokens = self.seq_len - len(src_encoded.ids) - 2
-        dec_num_padding_tokens = self.seq_len - len(tgt_encoded.ids) - 1
+        enc_num_padding_tokens = self.src_seq_len - len(src_encoded.ids) - 2
+        dec_num_padding_tokens = self.tgt_seq_len - len(tgt_encoded.ids) - 1
         
         if enc_num_padding_tokens < 0 or dec_num_padding_tokens < 0:
             raise ValueError("Sequence length is too short")
