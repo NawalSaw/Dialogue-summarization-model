@@ -37,15 +37,15 @@ class DecoderLayer(nn.Module):
 
     def forward(    
         self,
-        x,
-        encoder_output,
-        src_mask,
-        tgt_mask
+        x, # shape: (batch_size, seq_len, d_model)
+        encoder_output, # shape: (batch_size, seq_len, d_model)
+        src_mask, # shape: (batch_size, 1, seq_len, seq_len)
+        tgt_mask # shape: (batch_size, 1, seq_len, seq_len)
     ):
 
         ############### Self Attention ##################
 
-        residual = x
+        residual_1 = x
         x = self.norm1(x)
         attn = self.self_attention(
             x,
@@ -54,11 +54,11 @@ class DecoderLayer(nn.Module):
             tgt_mask
         )
         attn = self.dropout(attn)
-        x = residual + attn
-
+        x = residual_1 + attn
+        
         ############### Cross Attention ##################
 
-        residual = x
+        residual_2 = x
         x = self.norm2(x)
         attn = self.cross_attention(
             x,
@@ -67,15 +67,16 @@ class DecoderLayer(nn.Module):
             src_mask
         )
         attn = self.dropout(attn)
-        x = residual + attn
-
+        x = residual_2 + attn
+        # print("Cross attention output:", x.abs().mean().item())
         ############### Feed Forward Network ##################
         
-        residual = x
+        residual_3 = x
         x = self.norm3(x)
         ffn = self.ffn(x)
         ffn = self.dropout(ffn)
-        x = residual + ffn
+        x = residual_3 + ffn
+        # print("Feed forward output:", x.abs().mean().item())
 
         return x
 

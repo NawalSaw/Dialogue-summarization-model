@@ -7,4 +7,4 @@ class ProjectionLayer(nn.Module):
         self.proj = nn.Linear(d_model, vocab_size)
     
     def forward(self, x):
-        return torch.log_softmax(self.proj(x), dim=-1)
+        return self.proj(x)

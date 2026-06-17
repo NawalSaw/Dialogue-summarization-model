@@ -1,7 +1,7 @@
 from tokenizers import Tokenizer, normalizers
 from tokenizers.trainers import BpeTrainer
 from tokenizers.models import BPE
-from tokenizers.pre_tokenizers import Sequence, WhitespaceSplit, Punctuation
+from tokenizers.pre_tokenizers import Sequence, WhitespaceSplit, Punctuation, Digits
 from tokenizers.normalizers import Lowercase, NFD, StripAccents
 
 from pathlib import Path
@@ -24,15 +24,17 @@ def get_or_create_tokenizer(config, dataset, batch_size=8):
     if not tokenizer_path.exists():
         tokenizer = Tokenizer(BPE(unk_token="[UNK]"))
         tokenizer.pre_tokenizer = Sequence([
-            WhitespaceSplit(),
-            Punctuation()
+            WhitespaceSplit(), # Keeps \n as its own structural token
+            Punctuation(),
+            Digits(individual_digits=True) # Helps model learn math/time numbers better
         ])
         tokenizer.normalizer = normalizers.Sequence([NFD(), Lowercase(), StripAccents()])
 
-        trainer = BpeTrainer(special_tokens=["[UNK]", "[PAD]", "[BOS]", "[EOS]"], vocab_size=15000, min_frequency=2)
+        trainer = BpeTrainer(special_tokens=["[UNK]", "[PAD]", "[BOS]", "[EOS]"], vocab_size=16384, min_frequency=2)
 
         tokenizer.train_from_iterator(get_corpus(dataset, batch_size), trainer=trainer)
-
+        
+        tokenizer_path.parent.mkdir(parents=True, exist_ok=True)
         print(f"Tokenizer trained and saved at {tokenizer_path}")
         tokenizer.save(str(tokenizer_path))
 

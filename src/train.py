@@ -93,8 +93,8 @@ def get_dataset_tokenizer(config):
         src_len = len(tokenizer.encode(example["dialogue"]).ids)
         tgt_len = len(tokenizer.encode(example["summary"]).ids)
 
-        return src_len <= 481 and tgt_len <= 65
-    
+        return src_len <= 310 and tgt_len <= 65
+        
     filtered_train = train_dataset.filter(keep_example)
     filtered_val = val_dataset.filter(keep_example)
     filtered_test = test_dataset.filter(keep_example)
@@ -123,7 +123,7 @@ def lr_lambda(current_step: int, warmup_steps: int, total_training_steps: int):
     progress = float(current_step - warmup_steps) / float(max(1, total_training_steps - warmup_steps))
     import math
     cosine_decay = 0.5 * (1.0 + math.cos(math.pi * progress))
-    return max(0.1, cosine_decay) # Prevents LR from dropping all the way to absolute 0
+    return max(0.01, cosine_decay) # Prevents LR from dropping all the way to absolute 0
 
 def train_model(config):
     # Set the device
@@ -132,7 +132,7 @@ def train_model(config):
 
     Path(config["model_folder"]).mkdir(parents=True, exist_ok=True)
 
-    train_dataloader, val_dataloader, test_dataloader, tokenizer = get_dataset_tokenizer(config)
+    train_dataloader, val_dataloader, _, tokenizer = get_dataset_tokenizer(config)
     model = get_model(config, tokenizer.get_vocab_size()).to(device)
 
     writer = SummaryWriter(config["experiment_name"])
@@ -150,6 +150,8 @@ def train_model(config):
 
     intial_epoch = 0
     global_step = 0
+    best_loss = float('inf')
+    patience_counter = 0
                 
     num_params = sum(p.numel() for p in model.parameters())
     print(f"Number of parameters: {num_params:,}")
@@ -172,11 +174,12 @@ def train_model(config):
         print(f"Preloaded model from epoch {intial_epoch - 1}")
         print(f"Global step: {global_step}")
 
-    loss_fn = torch.nn.CrossEntropyLoss(ignore_index=tokenizer.token_to_id('[PAD]'), label_smoothing=0.1).to(device)
+    loss_fn = torch.nn.CrossEntropyLoss(ignore_index=tokenizer.token_to_id('[PAD]'), label_smoothing=0.0).to(device)
 
     for epoch in range(intial_epoch, config["num_epochs"]):
         model.train()
         batch_iter = tqdm(train_dataloader, desc=f"Epoch {epoch}")
+        loss_sum = 0.0
 
         for batch in batch_iter:
             encoder_input = batch["encoder_input"].to(device)
@@ -191,7 +194,8 @@ def train_model(config):
             proj_output = model.project(decoder_output) # (batch_size, seq_len, vocab_size)
             
             loss = loss_fn(proj_output.reshape(-1, tokenizer.get_vocab_size()), label.reshape(-1))
-
+            loss_sum += loss.item()
+            
             writer.add_scalar('train_loss', loss.item(), global_step)
 
             loss.backward()
@@ -212,16 +216,28 @@ def train_model(config):
             batch_iter.set_postfix({"loss": f"{loss.item():6.3f}", "lr": f"{current_lr:.2e}"})
             writer.flush()
 
-        checkpoint_path = get_weights_path(config, epoch)
-        torch.save({
-            "epoch": epoch,
-            "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": optimiser.state_dict(),
-            "scheduler_state_dict": scheduler.state_dict(), # Add this
-            "global_step": global_step
-        }, checkpoint_path)
+        loss = loss_sum / len(train_dataloader)
+
+        if loss < best_loss:
+            best_loss = loss
+            checkpoint_path = get_weights_path(config, epoch)
+            torch.save({
+                "epoch": epoch,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimiser.state_dict(),
+                "scheduler_state_dict": scheduler.state_dict(), # Add this
+                "global_step": global_step
+            }, checkpoint_path)
+
+        writer.add_scalar('epoch_loss', best_loss, epoch)
+
 
         evaluate_model(model, tokenizer, config["src_seq_len"], config["tgt_seq_len"], val_dataloader, device, lambda x: batch_iter.write(x))
+
+        patience_counter += 1
+        if patience_counter >= config["patience"]:
+            print(f"Early stopping at epoch {epoch}")
+            break
 
     model_path = get_weights_path(config, epoch)
     torch.save({
