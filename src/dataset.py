@@ -10,7 +10,7 @@ class SamsumDataset(Dataset):
         self.src_seq_len = src_seq_len
         self.tgt_seq_len = tgt_seq_len
 
-        self.pad_token =torch.tensor([tokenizer.token_to_id("[PAD]")], dtype=torch.int64)
+        self.pad_token = torch.tensor([tokenizer.token_to_id("[PAD]")], dtype=torch.int64)
         self.bos_token = torch.tensor([tokenizer.token_to_id("[BOS]")], dtype=torch.int64)
         self.eos_token = torch.tensor([tokenizer.token_to_id("[EOS]")], dtype=torch.int64)
 
@@ -55,7 +55,7 @@ class SamsumDataset(Dataset):
             "encoder_input": encoder_input,
             "decoder_input": decoder_input,
             "encoder_mask": (encoder_input != self.pad_token).unsqueeze(0).unsqueeze(0).int(),
-            "decoder_mask": (decoder_input != self.pad_token).unsqueeze(0).unsqueeze(0).int() & causal_mask(decoder_input.size(0)),
+            "decoder_mask": (decoder_input != self.pad_token).unsqueeze(0).unsqueeze(0).int() & causal_mask(decoder_input.size(0)).int(),
             "label": label,
             "src_text": src_text,
             "trg_text": tgt_text

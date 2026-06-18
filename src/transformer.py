@@ -43,14 +43,10 @@ class Transformer(nn.Module):
         return self.projection_layer(x)
     
 
-    def forward(self, encoder_input, decoder_input):
-
-        encoder_output = self.encoder(encoder_input)
-        decoder_output = self.decoder(decoder_input, encoder_output, encoder_input["attention_mask"])
-
-        output = self.projection_layer(decoder_output)
-
-        return output
+    def forward(self, encoder_input, decoder_input, encoder_mask, decoder_mask):
+        encoder_output = self.encode(encoder_input, encoder_mask)
+        decoder_output = self.decode(decoder_input, encoder_output, encoder_mask, decoder_mask)
+        return self.project(decoder_output)
 
 def build_transformer(d_model, heads_num, dropout, vocab_size, num_layers, src_seq_len, tgt_seq_len):
     model = Transformer(d_model, heads_num, dropout, vocab_size, num_layers, src_seq_len, tgt_seq_len)

@@ -5,17 +5,19 @@ from normalization.layer_normalization import LayerNorm
 from feed_forward_net.feed_forward import FeedForward
 
 class EncoderLayer(nn.Module):
-    def __init__(self, d_model, num_heads, d_ff, dropout=0.2, eps=1e-5):
+    def __init__(self, d_model, num_heads, d_ff, dropout=0.1, eps=1e-5):
         super().__init__()
 
         self.attention = MultiHeadAttention(
             d_model,
-            num_heads
+            num_heads,
+            dropout
         )
 
         self.ffn = FeedForward(
             d_model,
-            d_ff
+            d_ff,
+            dropout
         )
 
         self.dropout = nn.Dropout(dropout)
@@ -24,14 +26,17 @@ class EncoderLayer(nn.Module):
         self.norm2 = LayerNorm(eps)
 
     def forward(self, x, mask):
+        residual = x
         x = self.norm1(x)
         attn = self.dropout(self.attention(x, x, x, mask))
 
-        x = x + attn
+        x = residual + attn
 
+        # Feed Forward
+        residual = x
         x = self.norm2(x)
         ff = self.dropout(self.ffn(x))
 
-        x = x + ff
+        x = residual + ff
 
         return x

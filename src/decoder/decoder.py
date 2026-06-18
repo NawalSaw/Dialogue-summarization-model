@@ -4,7 +4,7 @@ from decoder.decoder_layer import DecoderLayer
 from normalization.layer_normalization import LayerNorm
 
 class Decoder(nn.Module):
-    def __init__(self, d_model, heads_num, d_ff, num_layers, dropout=0.2, eps=1e-5):
+    def __init__(self, d_model, heads_num, d_ff, num_layers, dropout=0.1, eps=1e-5):
         super().__init__()
 
         self.norm = LayerNorm(eps)

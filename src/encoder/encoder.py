@@ -14,7 +14,7 @@ class Encoder(nn.Module):
     ):
         super().__init__()
 
-        self.norm = LayerNorm()
+        self.norm = LayerNorm(eps)
         self.layers = nn.ModuleList(
             [
                 EncoderLayer(

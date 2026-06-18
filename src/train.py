@@ -105,7 +105,7 @@ def get_dataset_tokenizer(config):
     val_dataset = SamsumDataset(filtered_val, tokenizer, config["src_seq_len"], config["tgt_seq_len"])
     test_dataset = SamsumDataset(filtered_test, tokenizer, config["src_seq_len"], config["tgt_seq_len"])
 
-    train_dataloader = DataLoader(train_dataset, batch_size=config["batch_size"], shuffle=True)
+    train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True)
     val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=False)
     test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 

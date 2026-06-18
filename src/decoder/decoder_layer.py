@@ -10,23 +10,26 @@ class DecoderLayer(nn.Module):
         d_model,
         num_heads,
         d_ff,
-        dropout=0.2,
+        dropout=0.1,
         eps=1e-5
     ):
         super().__init__()
 
         self.self_attention = MultiHeadAttention(
             d_model=d_model,
-            num_heads=num_heads
+            num_heads=num_heads,
+            dropout=dropout
         )
         self.cross_attention = MultiHeadAttention(
             d_model=d_model,
-            num_heads=num_heads
+            num_heads=num_heads,
+            dropout=dropout
         )
 
         self.ffn = FeedForward(
             d_model,
-            d_ff
+            d_ff,
+            dropout
         )
 
         self.dropout = nn.Dropout(dropout)
@@ -70,6 +73,8 @@ class DecoderLayer(nn.Module):
         x = residual_2 + attn
         # print("Cross attention output:", x.abs().mean().item())
         ############### Feed Forward Network ##################
+        # cross_attn_output_std = x.std()
+        # print("Cross attention output std:", cross_attn_output_std)
         
         residual_3 = x
         x = self.norm3(x)

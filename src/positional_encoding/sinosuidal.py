@@ -17,7 +17,8 @@ class SinusoidalPositionalEncoding(torch.nn.Module):
         )
         
         pe[:, 0::2] = torch.sin(position * div_term) # even indices
-        pe[:, 1::2] = torch.cos(position * div_term) # odd indices
+        if d_model > 1:
+            pe[:, 1::2] = torch.cos(position * div_term) # odd indices
 
         pe = pe.unsqueeze(0) # (1, seq_len, d_model)
 
