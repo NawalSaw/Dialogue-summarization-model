@@ -3,10 +3,10 @@ from pathlib import Path
 def get_config():
     return {
         'lr': 3e-4, 
-        "d_model": 512,
-        "heads_num": 4,
+        "d_model": 256,
+        "heads_num": 8,
         "dropout": 0.1,
-        "num_layers": 4,
+        "num_layers": 8,
         "src_seq_len": 320,
         "tgt_seq_len": 72,
         "batch_size": 16,
@@ -16,8 +16,8 @@ def get_config():
         'num_epochs': 25,
         "tokenizer_path": "models/tokenizer.json",
         "experiment_name": "runs/tmodel",
-        "warmup_ratio": 0.10
-        
+        "warmup_ratio": 0.10,
+        "patience": 5
     }
 
 def get_weights_path(config, epoch: int):

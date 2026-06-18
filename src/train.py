@@ -1,3 +1,5 @@
+import glob
+import os
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -157,11 +159,11 @@ def train_model(config):
     print(f"Number of parameters: {num_params:,}")
     print(f"vocabulary size: {tokenizer.get_vocab_size()}")
 
-    if config['preload']:
+    if config['preload'] is not None:
         model_filename = get_weights_path(config, config['preload'])
         print(f"Preloading model {model_filename}")
 
-        state = torch.load(model_filename)
+        state = torch.load(model_filename, map_location=device)
         model.load_state_dict(state['model_state_dict'])
 
         scheduler.load_state_dict(state['scheduler_state_dict'])
@@ -214,13 +216,21 @@ def train_model(config):
             
             # Optional: Display current LR in progress bar
             batch_iter.set_postfix({"loss": f"{loss.item():6.3f}", "lr": f"{current_lr:.2e}"})
-            writer.flush()
+            
+        writer.flush()
 
         loss = loss_sum / len(train_dataloader)
 
         if loss < best_loss:
             best_loss = loss
             checkpoint_path = get_weights_path(config, epoch)
+
+            # Remove previous models
+            prev_weights = glob.glob(str(Path(config["model_folder"]) / f"{config['model_basename']}*.pt"))
+            for f in prev_weights:
+                if Path(f).exists():
+                    os.remove(f)
+
             torch.save({
                 "epoch": epoch,
                 "model_state_dict": model.state_dict(),
@@ -228,28 +238,21 @@ def train_model(config):
                 "scheduler_state_dict": scheduler.state_dict(), # Add this
                 "global_step": global_step
             }, checkpoint_path)
+            print(f"Saved checkpoint to {checkpoint_path}")
+            patience_counter = 0
+        else:
+            print(f"Epoch {epoch}: Loss did not improve from {best_loss}")
+            patience_counter += 1
 
         writer.add_scalar('epoch_loss', best_loss, epoch)
-
-
+        
         evaluate_model(model, tokenizer, config["src_seq_len"], config["tgt_seq_len"], val_dataloader, device, lambda x: batch_iter.write(x))
 
-        patience_counter += 1
         if patience_counter >= config["patience"]:
             print(f"Early stopping at epoch {epoch}")
             break
 
-    model_path = get_weights_path(config, epoch)
-    torch.save({
-        'epoch': epoch,
-        'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimiser.state_dict(),
-        'scheduler_state_dict': scheduler.state_dict(),
-        'global_step': global_step
-    }, model_path)
-
     writer.close()
-    print(f"Model saved to {model_path}")
     
 
 if __name__ == "__main__":
