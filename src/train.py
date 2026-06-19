@@ -33,7 +33,7 @@ def greedy_decode(model, tokenizer, source, source_mask, src_seq_len, tgt_seq_le
             break
 
         # Prepare decoder mask
-        decoder_mask = causal_mask(decoder_input.size(1)).type_as(source_mask).to(device)
+        decoder_mask = causal_mask(decoder_input.size(1)).unsqueeze(0).type_as(source_mask).to(device)        
         
         # Get decoder output
         decoder_output = model.decode(decoder_input, encoder_output, source_mask, decoder_mask) # shape (1, seq_len, d_model)
@@ -71,7 +71,7 @@ def evaluate_model(model, tokenizer, src_seq_len, tgt_seq_len, validation_datase
             model_out = greedy_decode(model, tokenizer, encoder_input, encoder_mask, src_seq_len, tgt_seq_len, device)
             
             source_text = batch["src_text"][0]
-            target_text = batch["trg_text"][0]
+            target_text = batch["tgt_text"][0]
             model_out_text = tokenizer.decode(model_out.detach().cpu().numpy())
 
             print_msg(f"{'SOURCE':>12}: {source_text}")
