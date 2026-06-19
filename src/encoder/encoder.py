@@ -9,7 +9,7 @@ class Encoder(nn.Module):
         num_heads,
         d_ff,
         num_layers,
-        dropout=0.2,
+        dropout=0.1,
         eps=1e-5
     ):
         super().__init__()

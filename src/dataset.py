@@ -10,7 +10,7 @@ class SamsumDataset(Dataset):
         self.src_seq_len = src_seq_len
         self.tgt_seq_len = tgt_seq_len
 
-        self.pad_token = torch.tensor([tokenizer.token_to_id("[PAD]")], dtype=torch.int64)
+        self.pad_token = tokenizer.token_to_id("[PAD]")
         self.bos_token = torch.tensor([tokenizer.token_to_id("[BOS]")], dtype=torch.int64)
         self.eos_token = torch.tensor([tokenizer.token_to_id("[EOS]")], dtype=torch.int64)
 
@@ -31,34 +31,53 @@ class SamsumDataset(Dataset):
         if enc_num_padding_tokens < 0 or dec_num_padding_tokens < 0:
             raise ValueError("Sequence length is too short")
         
+        # shape (seq_len)
         encoder_input = torch.cat([
             self.bos_token,
             torch.tensor(src_encoded.ids, dtype=torch.int64),
             self.eos_token,
-            torch.tensor([self.pad_token] * enc_num_padding_tokens, dtype=torch.int64)
+            torch.full(
+                (enc_num_padding_tokens,),
+                self.pad_token,
+                dtype=torch.int64
+            )
         ])
         
-        # shape (seq_len)
+        # shape (seq_len)   
         decoder_input = torch.cat([
             self.bos_token,
             torch.tensor(tgt_encoded.ids, dtype=torch.int64),
-            torch.tensor([self.pad_token] * dec_num_padding_tokens, dtype=torch.int64)
+            torch.full(
+                (dec_num_padding_tokens,),
+                self.pad_token,
+                dtype=torch.int64
+            )
         ])
 
         label = torch.cat([
             torch.tensor(tgt_encoded.ids, dtype=torch.int64),
             self.eos_token,
-            torch.tensor([self.pad_token] * dec_num_padding_tokens, dtype=torch.int64)
+            torch.full(
+                (dec_num_padding_tokens,),
+                self.pad_token,
+                dtype=torch.int64
+            )
         ])
+
+        encoder_mask = (encoder_input != self.pad_token).unsqueeze(0).unsqueeze(0)
+        decoder_mask = (
+            (decoder_input != self.pad_token).unsqueeze(0).unsqueeze(0)
+            & causal_mask(decoder_input.size(0))
+        )
 
         return {
             "encoder_input": encoder_input,
             "decoder_input": decoder_input,
-            "encoder_mask": (encoder_input != self.pad_token).unsqueeze(0).unsqueeze(0).int(),
-            "decoder_mask": (decoder_input != self.pad_token).unsqueeze(0).unsqueeze(0).int() & causal_mask(decoder_input.size(0)).int(),
+            "encoder_mask": encoder_mask,
+            "decoder_mask": decoder_mask,
             "label": label,
             "src_text": src_text,
-            "trg_text": tgt_text
+            "tgt_text": tgt_text
         }
 
 def causal_mask(size):

@@ -3,13 +3,13 @@ from pathlib import Path
 def get_config():
     return {
         'lr': 3e-4, 
-        "d_model": 256,
+        "d_model": 512,
         "heads_num": 8,
         "dropout": 0.1,
-        "num_layers": 8,
+        "num_layers": 6,
         "src_seq_len": 320,
         "tgt_seq_len": 72,
-        "batch_size": 16,
+        "batch_size": 32,
         "model_folder": "weights",
         "model_basename": "tmodel_",
         "preload": None,

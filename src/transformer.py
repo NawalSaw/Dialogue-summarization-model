@@ -28,8 +28,11 @@ class Transformer(nn.Module):
         self.projection_layer = ProjectionLayer(d_model, vocab_size)
         
     def encode(self, x, src_mask):
+        # shape x -> [batch_size, seq_len] 
         x = self.src_embedding(x)
+        # shape x -> [batch_size, seq_len, d_model] 
         x = self.src_positional_encoding(x)
+        # shape x -> [batch_size, seq_len, d_model] 
         x = self.encoder(x, src_mask)
         return x
 
@@ -52,6 +55,7 @@ def build_transformer(d_model, heads_num, dropout, vocab_size, num_layers, src_s
     model = Transformer(d_model, heads_num, dropout, vocab_size, num_layers, src_seq_len, tgt_seq_len)
 
     for p in model.parameters():
+        print(f"Parameter shape: {p.shape}")
         if p.dim() > 1:
             nn.init.xavier_uniform_(p)
 

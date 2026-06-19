@@ -18,7 +18,7 @@ def get_corpus(dataset, batch_size=1000):
         # This yields 2000 total independent text items per 1000 row batch
         yield dialogues + summaries
 
-def get_or_create_tokenizer(config, dataset, batch_size=8):
+def get_or_create_tokenizer(config, dataset, batch_size=1000):
     tokenizer_path = Path(config['tokenizer_path'])
     
     if not tokenizer_path.exists():
@@ -30,7 +30,7 @@ def get_or_create_tokenizer(config, dataset, batch_size=8):
         ])
         tokenizer.normalizer = normalizers.Sequence([NFD(), Lowercase(), StripAccents()])
 
-        trainer = BpeTrainer(special_tokens=["[UNK]", "[PAD]", "[BOS]", "[EOS]"], vocab_size=16384, min_frequency=2)
+        trainer = BpeTrainer(special_tokens=["[UNK]", "[PAD]", "[BOS]", "[EOS]"], vocab_size=8192, min_frequency=2)
 
         tokenizer.train_from_iterator(get_corpus(dataset, batch_size), trainer=trainer)
         

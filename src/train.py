@@ -105,7 +105,7 @@ def get_dataset_tokenizer(config):
     val_dataset = SamsumDataset(filtered_val, tokenizer, config["src_seq_len"], config["tgt_seq_len"])
     test_dataset = SamsumDataset(filtered_test, tokenizer, config["src_seq_len"], config["tgt_seq_len"])
 
-    train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True)
+    train_dataloader = DataLoader(train_dataset, batch_size=config["batch_size"], shuffle=True)
     val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=False)
     test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
@@ -121,6 +121,8 @@ def lr_lambda(current_step: int, warmup_steps: int, total_training_steps: int):
     if current_step < warmup_steps:
         return float(current_step) / float(max(1, warmup_steps))
     
+    # Peak LR equals --> config["lr"]
+
     # Phase 2: Cosine Decay down to 10% of peak LR
     progress = float(current_step - warmup_steps) / float(max(1, total_training_steps - warmup_steps))
     import math
@@ -144,7 +146,7 @@ def train_model(config):
     total_training_steps = config["num_epochs"] * num_batches_per_epoch
     warmup_steps = int(total_training_steps * config["warmup_ratio"])
 
-    optimiser = torch.optim.AdamW(model.parameters(), lr=config["lr"], eps=1e-9, weight_decay=0.01)
+    optimiser = torch.optim.AdamW(model.parameters(), lr=config["lr"], eps=1e-5, weight_decay=0.01)
     scheduler = LambdaLR(optimiser, lambda current_step: lr_lambda(current_step, warmup_steps, total_training_steps))
 
     print(f"Total training steps: {total_training_steps}")
@@ -188,7 +190,7 @@ def train_model(config):
             decoder_input = batch["decoder_input"].to(device)
             encoder_mask = batch["encoder_mask"].to(device)
             decoder_mask = batch["decoder_mask"].to(device)
-            label = batch["label"].to(device)
+            label = batch["label"].to(device) # shape (batch_size, seq_len)
 
             # Run the tensors through the encoder, decoder and the projection layer
             encoder_output = model.encode(encoder_input, encoder_mask) # (batch_size, seq_len, d_model)
