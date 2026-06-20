@@ -53,9 +53,7 @@ class Transformer(nn.Module):
 
 def build_transformer(d_model, heads_num, dropout, vocab_size, num_layers, src_seq_len, tgt_seq_len):
     model = Transformer(d_model, heads_num, dropout, vocab_size, num_layers, src_seq_len, tgt_seq_len)
-
     for p in model.parameters():
-        print(f"Parameter shape: {p.shape}")
         if p.dim() > 1:
             nn.init.xavier_uniform_(p)
 

@@ -195,6 +195,7 @@ def train_model(config):
 
     best_loss = float('inf')
     patience_counter = 0
+    accumulation_steps = 8   # if batch_size=16, total effective batch = 16 * 2 GPUs * 2 = 64
 
     # Initialize AMP Scaler for mixed precision training
     scaler = torch.amp.GradScaler('cuda')
@@ -229,33 +230,36 @@ def train_model(config):
         batch_iter = tqdm(train_dataloader, desc=f"Epoch {epoch}")
         loss_sum = 0.0
 
-        for batch in batch_iter:
+        for i, batch in enumerate(batch_iter):
             encoder_input = batch["encoder_input"].to(device, non_blocking=True)
             decoder_input = batch["decoder_input"].to(device, non_blocking=True)
             encoder_mask = batch["encoder_mask"].to(device, non_blocking=True)
             decoder_mask = batch["decoder_mask"].to(device, non_blocking=True)
             label = batch["label"].to(device, non_blocking=True) # shape (batch_size, seq_len)
 
-            optimiser.zero_grad(set_to_none=True)
-
             # AMP Forward Pass
             with torch.amp.autocast('cuda', dtype=torch.float16):
                 # Run the tensors through the model
                 proj_output = model(encoder_input, decoder_input, encoder_mask, decoder_mask) # (batch_size, seq_len, vocab_size)
                 loss = loss_fn(proj_output.view(-1, tokenizer.get_vocab_size()), label.view(-1))
+                raw_loss = loss.item()
             
             # AMP Backward and Optimization Step
+            loss = loss / accumulation_steps
+            loss_sum += raw_loss
             scaler.scale(loss).backward()
-            scaler.step(optimiser)
-            scaler.update()
             scheduler.step()
+                 
+            if (i + 1) % accumulation_steps != 0:
+                scaler.step(optimiser)
+                scaler.update()
+                optimiser.zero_grad(set_to_none=True)
 
             global_step += 1
-            loss_sum += loss.item()
 
             if rank == 0:
-                batch_iter.set_postfix({f"loss": f"{loss.item():.4f}"})
-                writer.add_scalar('train_loss', loss.item(), global_step)
+                batch_iter.set_postfix({f"loss": f"{raw_loss:.4f}"})
+                writer.add_scalar('train_loss', raw_loss, global_step)
                 writer.add_scalar('lr', scheduler.get_last_lr()[0], global_step)
         
         # Average loss across all workers for accurate evaluation

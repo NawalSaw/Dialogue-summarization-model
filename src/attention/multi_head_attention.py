@@ -25,7 +25,7 @@ class MultiHeadAttention(nn.Module):
 
         attention_scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(query.size(-1))
         if mask is not None:
-            attention_scores = attention_scores.masked_fill(mask == 0, -1e9)
+            attention_scores = attention_scores.masked_fill(mask == 0, torch.finfo(attention_scores.dtype).min)
 
         attention_weights = torch.softmax(attention_scores, dim=-1)
         attention_weights = attn_dropout(attention_weights)
