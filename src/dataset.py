@@ -11,8 +11,8 @@ class SamsumDataset(Dataset):
         self.tgt_seq_len = tgt_seq_len
 
         self.pad_token = tokenizer.token_to_id("[PAD]")
-        self.bos_token = torch.tensor([tokenizer.token_to_id("[BOS]")], dtype=torch.int64)
-        self.eos_token = torch.tensor([tokenizer.token_to_id("[EOS]")], dtype=torch.int64)
+        self.bos_token = torch.tensor([tokenizer.token_to_id("[BOS]")], dtype=torch.int16)
+        self.eos_token = torch.tensor([tokenizer.token_to_id("[EOS]")], dtype=torch.int16)
 
     def __len__(self):
         return len(self.dataset)
@@ -64,33 +64,33 @@ class SamsumDataset(Dataset):
         # shape (seq_len)
         encoder_input = torch.cat([
             self.bos_token,
-            torch.tensor(src_encoded.ids, dtype=torch.int64),
+            torch.tensor(src_encoded.ids, dtype=torch.int16),
             self.eos_token,
             torch.full(
                 (enc_num_padding_tokens,),
                 self.pad_token,
-                dtype=torch.int64
+                dtype=torch.int16
             )
         ])
         
         # shape (seq_len)   
         decoder_input = torch.cat([
             self.bos_token,
-            torch.tensor(tgt_encoded.ids, dtype=torch.int64),
+            torch.tensor(tgt_encoded.ids, dtype=torch.int16),
             torch.full(
                 (dec_num_padding_tokens,),
                 self.pad_token,
-                dtype=torch.int64
+                dtype=torch.int16
             )
         ])
 
         label = torch.cat([
-            torch.tensor(tgt_encoded.ids, dtype=torch.int64),
-            self.eos_token,
+            torch.tensor(tgt_encoded.ids, dtype=torch.int16),
+            self.eos_token, 
             torch.full(
                 (dec_num_padding_tokens,),
                 self.pad_token,
-                dtype=torch.int64
+                dtype=torch.int16
             )
         ])
 

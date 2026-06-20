@@ -8,24 +8,31 @@ from torch.optim.lr_scheduler import LambdaLR
 
 from pathlib import Path
 
+# Distributed Training Imports
+import torch.distributed as dist
+from torch.utils.data.distributed import DistributedSampler
+from torch.nn.parallel import DistributedDataParallel as DDP
+
 from dataset import SamsumDataset, causal_mask
 from tokeniser.tokeniser import get_or_create_tokenizer
 from datasets import load_dataset, concatenate_datasets
 from tqdm import tqdm
 
 from transformer import build_transformer
-from config import get_config
-from config import get_weights_path
+from config import get_config, get_weights_path
 
 def greedy_decode(model, tokenizer, source, source_mask, src_seq_len, tgt_seq_len, device):
     bos_token_id = tokenizer.token_to_id("[BOS]")
     eos_token_id = tokenizer.token_to_id("[EOS]")
     
+    # Use unwrapped module when running inference inside DDP
+    model_m = model.module if hasattr(model, "module") else model
+    
     # Precomputing
-    encoder_output = model.encode(source, source_mask)
+    encoder_output = model_m.encode(source, source_mask)
     
     # Start with BOS token
-    decoder_input = torch.tensor([[bos_token_id]], dtype=torch.int64, device=device) # shape (1, 1)
+    decoder_input = torch.tensor([[bos_token_id]], dtype=torch.long, device=device) # shape (1, 1)
     
     # Generate tokens
     while True:
@@ -36,14 +43,14 @@ def greedy_decode(model, tokenizer, source, source_mask, src_seq_len, tgt_seq_le
         decoder_mask = causal_mask(decoder_input.size(1)).unsqueeze(0).type_as(source_mask).to(device)        
         
         # Get decoder output
-        decoder_output = model.decode(decoder_input, encoder_output, source_mask, decoder_mask) # shape (1, seq_len, d_model)
+        decoder_output = model_m.decode(decoder_input, encoder_output, source_mask, decoder_mask) # shape (1, seq_len, d_model)
         
         # Get next token
-        next_token_probs = model.project(decoder_output[:, -1, :]) # shape (1, vocab_size)
+        next_token_probs = model_m.project(decoder_output[:, -1, :]) # shape (1, vocab_size)
         _, next_token = torch.max(next_token_probs, dim=-1, keepdim=True) # shape (1, 1)
         
         # Append to decoder input
-        decoder_input = torch.cat([decoder_input, torch.empty(1, 1, dtype=torch.int64, device=device).type_as(source).fill_(next_token.item())], dim=1)
+        decoder_input = torch.cat([decoder_input, torch.empty(1, 1, dtype=torch.long, device=device).type_as(source).fill_(next_token.item())], dim=1)
     
         # Check for EOS
         if next_token.item() == eos_token_id:
@@ -53,8 +60,8 @@ def greedy_decode(model, tokenizer, source, source_mask, src_seq_len, tgt_seq_le
     
 def evaluate_model(model, tokenizer, src_seq_len, tgt_seq_len, validation_dataset, device, print_msg, num_example=2):
     model.eval()
-    count = 0
 
+    count = 0
     console_width = 80
 
     with torch.no_grad():
@@ -77,11 +84,17 @@ def evaluate_model(model, tokenizer, src_seq_len, tgt_seq_len, validation_datase
             print_msg(f"{'SOURCE':>12}: {source_text}")
             print_msg(f"{'TARGET':>12}: {target_text}")
             print_msg(f"{'PREDICTED':>12}: {model_out_text}")
-
             print_msg("=" * console_width)
             
-def get_dataset_tokenizer(config):
-    dataset = load_dataset("knkarthick/samsum")
+def get_dataset_tokenizer(config, rank, world_size):
+
+    # Only let rank 0 download and tokenize dataset to avoid file race locks
+    dataset=None
+    if rank == 0:
+        dataset = load_dataset("knkarthick/samsum")
+    dist.barrier() # Wait until process 0 is done
+    if rank != 0:
+        dataset = load_dataset("knkarthick/samsum")
 
     train_dataset = dataset['train']
     val_dataset = dataset['validation']
@@ -105,8 +118,11 @@ def get_dataset_tokenizer(config):
     val_dataset = SamsumDataset(filtered_val, tokenizer, config["src_seq_len"], config["tgt_seq_len"])
     test_dataset = SamsumDataset(filtered_test, tokenizer, config["src_seq_len"], config["tgt_seq_len"])
 
-    train_dataloader = DataLoader(train_dataset, batch_size=config["batch_size"], shuffle=True)
-    val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=False)
+    # Attach DistributedSamplers
+    train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank, shuffle=True)
+
+    train_dataloader = DataLoader(train_dataset, batch_size=config["batch_size"], sampler=train_sampler, num_workers=2, pin_memory=True)
+    val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=2, pin_memory=True)
     test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
     return train_dataloader, val_dataloader, test_dataloader, tokenizer
@@ -115,7 +131,7 @@ def get_model(config, vocab_size):
     model = build_transformer(config["d_model"], config["heads_num"], config["dropout"], vocab_size, config["num_layers"], config["src_seq_len"], config["tgt_seq_len"])
     return model
 
-# 3. Define the scheduling mathematical logic
+# Define the scheduling mathematical logic
 def lr_lambda(current_step: int, warmup_steps: int, total_training_steps: int):
     # Phase 1: Linear Warmup
     if current_step < warmup_steps:
@@ -129,18 +145,40 @@ def lr_lambda(current_step: int, warmup_steps: int, total_training_steps: int):
     cosine_decay = 0.5 * (1.0 + math.cos(math.pi * progress))
     return max(0.01, cosine_decay) # Prevents LR from dropping all the way to absolute 0
 
-def train_model(config):
-    # Set the device
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print("Using device:", device)
+def train_model(config): 
+    # Initialize PyTorch Process Group for multi-GPU
+    dist.init_process_group(backend="nccl")
 
-    Path(config["model_folder"]).mkdir(parents=True, exist_ok=True)
+    # Get environment variables managed by torchrun
+    rank = int(os.environ["RANK"])
+    local_rank = int(os.environ["LOCAL_RANK"])
+    world_size = int(os.environ["WORLD_SIZE"])
 
-    train_dataloader, val_dataloader, _, tokenizer = get_dataset_tokenizer(config)
+    # Set the local GPU device
+    device = torch.device(f"cuda:{local_rank}")
+    torch.cuda.set_device(device)
+
+    # Define a printing manager that isolates stdout to Main GPU (Rank 0)
+    def print_msg(msg):
+        if rank == 0:
+            print(msg)
+
+    print_msg(f"Running DDP on {world_size} GPUs. Current GPU Local Rank: {local_rank}")
+
+    if rank == 0:
+        Path(config["model_folder"]).mkdir(parents=True, exist_ok=True)
+
+    train_dataloader, val_dataloader, _, tokenizer = get_dataset_tokenizer(config, rank, world_size)
     model = get_model(config, tokenizer.get_vocab_size()).to(device)
 
-    writer = SummaryWriter(config["experiment_name"])
+    # Wrap model with Distributed Data Parallel
+    model = DDP(model, device_ids=[local_rank], output_device=local_rank)
 
+    # TensorBoard setup only on Main GPU
+    writer = None
+    if rank == 0:
+        writer = SummaryWriter(config["experiment_name"])
+    
     # Calculate steps
     num_batches_per_epoch = len(train_dataloader)
     total_training_steps = config["num_epochs"] * num_batches_per_epoch
@@ -149,112 +187,127 @@ def train_model(config):
     optimiser = torch.optim.AdamW(model.parameters(), lr=config["lr"], eps=1e-5, weight_decay=0.01)
     scheduler = LambdaLR(optimiser, lambda current_step: lr_lambda(current_step, warmup_steps, total_training_steps))
 
-    print(f"Total training steps: {total_training_steps}")
-    print(f"Warmup steps: {warmup_steps}")
+    print_msg(f"Total training steps: {total_training_steps}")
+    print_msg(f"Warmup steps: {warmup_steps}")
 
     intial_epoch = 0
     global_step = 0
+
     best_loss = float('inf')
     patience_counter = 0
+
+    # Initialize AMP Scaler for mixed precision training
+    scaler = torch.amp.GradScaler('cuda')
                 
     num_params = sum(p.numel() for p in model.parameters())
-    print(f"Number of parameters: {num_params:,}")
-    print(f"vocabulary size: {tokenizer.get_vocab_size()}")
+    print_msg(f"Number of parameters: {num_params:,}")
+    print_msg(f"vocabulary size: {tokenizer.get_vocab_size()}")
 
     if config['preload'] is not None:
         model_filename = get_weights_path(config, config['preload'])
-        print(f"Preloading model {model_filename}")
+        print_msg(f"Preloading model {model_filename}")
 
         state = torch.load(model_filename, map_location=device)
-        model.load_state_dict(state['model_state_dict'])
-
+        model.module.load_state_dict(state['model_state_dict'])
         scheduler.load_state_dict(state['scheduler_state_dict'])
-        print("Preloaded scheduler state successfully.")
-
-        intial_epoch = state['epoch'] + 1
         optimiser.load_state_dict(state['optimizer_state_dict'])
 
+        intial_epoch = state['epoch'] + 1
         global_step = state['global_step']
-        print(f"Preloaded model from epoch {intial_epoch - 1}")
-        print(f"Global step: {global_step}")
+        
+        print_msg(f"Preloaded model from epoch {intial_epoch - 1}")
+        print_msg(f"Global step: {global_step}")
 
-    loss_fn = torch.nn.CrossEntropyLoss(ignore_index=tokenizer.token_to_id('[PAD]'), label_smoothing=0.0).to(device)
+    loss_fn = torch.nn.CrossEntropyLoss(ignore_index=tokenizer.token_to_id('[PAD]'), label_smoothing=0.1).to(device)
 
     for epoch in range(intial_epoch, config["num_epochs"]):
         model.train()
+
+        # Set epoch in distributed sampler to guarantee unique splits/shuffles per GPU
+        train_dataloader.sampler.set_epoch(epoch)
+
         batch_iter = tqdm(train_dataloader, desc=f"Epoch {epoch}")
         loss_sum = 0.0
 
         for batch in batch_iter:
-            encoder_input = batch["encoder_input"].to(device)
-            decoder_input = batch["decoder_input"].to(device)
-            encoder_mask = batch["encoder_mask"].to(device)
-            decoder_mask = batch["decoder_mask"].to(device)
-            label = batch["label"].to(device) # shape (batch_size, seq_len)
+            encoder_input = batch["encoder_input"].to(device, non_blocking=True)
+            decoder_input = batch["decoder_input"].to(device, non_blocking=True)
+            encoder_mask = batch["encoder_mask"].to(device, non_blocking=True)
+            decoder_mask = batch["decoder_mask"].to(device, non_blocking=True)
+            label = batch["label"].to(device, non_blocking=True) # shape (batch_size, seq_len)
 
-            # Run the tensors through the encoder, decoder and the projection layer
-            encoder_output = model.encode(encoder_input, encoder_mask) # (batch_size, seq_len, d_model)
-            decoder_output = model.decode(decoder_input, encoder_output, encoder_mask, decoder_mask) # (batch_size, seq_len, d_model)
-            proj_output = model.project(decoder_output) # (batch_size, seq_len, vocab_size)
+            optimiser.zero_grad(set_to_none=True)
+
+            # AMP Forward Pass
+            with torch.amp.autocast('cuda', dtype=torch.float16):
+                # Run the tensors through the encoder, decoder and the projection layer
+                encoder_output = model.module.encode(encoder_input, encoder_mask) # (batch_size, seq_len, d_model)
+                decoder_output = model.module.decode(decoder_input, encoder_output, encoder_mask, decoder_mask) # (batch_size, seq_len, d_model)
+                proj_output = model.module.project(decoder_output) # (batch_size, seq_len, vocab_size)
             
-            loss = loss_fn(proj_output.reshape(-1, tokenizer.get_vocab_size()), label.reshape(-1))
-            loss_sum += loss.item()
+                loss = loss_fn(proj_output.view(-1, tokenizer.get_vocab_size()), label.view(-1))
             
-            writer.add_scalar('train_loss', loss.item(), global_step)
-
-            loss.backward()
-
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-
-            optimiser.step()
+            # AMP Backward and Optimization Step
+            scaler.scale(loss).backward()
+            scaler.step(optimiser)
+            scaler.update()
             scheduler.step()
-            optimiser.zero_grad()
 
             global_step += 1
+            loss_sum += loss.item()
 
-            # NEW: Track current learning rate in TensorBoard to verify it works
-            current_lr = optimiser.param_groups[0]["lr"]
-            writer.add_scalar('learning_rate', current_lr, global_step)
-            
-            # Optional: Display current LR in progress bar
-            batch_iter.set_postfix({"loss": f"{loss.item():6.3f}", "lr": f"{current_lr:.2e}"})
-            
-        writer.flush()
+            if rank == 0:
+                batch_iter.set_postfix({f"loss": f"{loss.item():.4f}"})
+                writer.add_scalar('train_loss', loss.item(), global_step)
+                writer.add_scalar('lr', scheduler.get_last_lr()[0], global_step)
+        
+        # Average loss across all workers for accurate evaluation
+        local_loss = loss_sum / len(train_dataloader)
+        loss_tensor = torch.tensor([local_loss], device=device)
+        dist.all_reduce(loss_tensor, op=dist.ReduceOp.SUM)
+        avg_epoch_loss = loss_tensor.item() / world_size
 
-        loss = loss_sum / len(train_dataloader)
-
-        if loss < best_loss:
-            best_loss = loss
-            checkpoint_path = get_weights_path(config, epoch)
-
-            # Remove previous models
-            prev_weights = glob.glob(str(Path(config["model_folder"]) / f"{config['model_basename']}*.pt"))
-            for f in prev_weights:
-                if Path(f).exists():
-                    os.remove(f)
-
-            torch.save({
-                "epoch": epoch,
-                "model_state_dict": model.state_dict(),
-                "optimizer_state_dict": optimiser.state_dict(),
-                "scheduler_state_dict": scheduler.state_dict(), # Add this
-                "global_step": global_step
-            }, checkpoint_path)
-            print(f"Saved checkpoint to {checkpoint_path}")
+        if rank == 0:
+            writer.flush()
+        
+        if avg_epoch_loss < best_loss:
+            best_loss = avg_epoch_loss
             patience_counter = 0
+
+            if rank == 0:
+                checkpoint_path = get_weights_path(config, epoch)
+
+                # Remove previous models
+                prev_weights = glob.glob(str(Path(config["model_folder"]) / f"{config['model_basename']}*.pt"))
+                for f in prev_weights:
+                    if Path(f).exists():
+                        os.remove(f)
+
+                torch.save({
+                    "epoch": epoch,
+                    "model_state_dict": model.state_dict(),
+                    "optimizer_state_dict": optimiser.state_dict(),
+                    "scheduler_state_dict": scheduler.state_dict(), # Add this
+                    "global_step": global_step
+                }, checkpoint_path)
+                print_msg(f"Saved checkpoint to {checkpoint_path}")
         else:
-            print(f"Epoch {epoch}: Loss did not improve from {best_loss}")
+            print_msg(f"Epoch {epoch}: Loss did not improve from {best_loss}")
             patience_counter += 1
 
-        writer.add_scalar('epoch_loss', best_loss, epoch)
-        
-        evaluate_model(model, tokenizer, config["src_seq_len"], config["tgt_seq_len"], val_dataloader, device, lambda x: batch_iter.write(x))
+
+        if rank == 0:
+            writer.add_scalar('epoch_loss', best_loss, epoch)
+            evaluate_model(model, tokenizer, config["src_seq_len"], config["tgt_seq_len"], val_dataloader, device, lambda x: batch_iter.write(x))
 
         if patience_counter >= config["patience"]:
-            print(f"Early stopping at epoch {epoch}")
+            print_msg(f"Early stopping at epoch {epoch}")
             break
-
-    writer.close()
+    
+    if rank == 0:
+        if writer:
+            writer.close()
+    dist.destroy_process_group()
     
 
 if __name__ == "__main__":

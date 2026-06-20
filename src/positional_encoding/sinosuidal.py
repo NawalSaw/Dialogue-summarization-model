@@ -9,7 +9,7 @@ class SinusoidalPositionalEncoding(torch.nn.Module):
         self.dropout = torch.nn.Dropout(dropout)
 
         pe = torch.zeros(seq_len, d_model)
-        position = torch.arange(0, seq_len, dtype=torch.float).unsqueeze(1) # (seq_len, 1)
+        position = torch.arange(0, seq_len, dtype=torch.float16).unsqueeze(1) # (seq_len, 1)
 
         # shape div_term -> (d_model/2)
         div_term = torch.exp(
