@@ -240,11 +240,8 @@ def train_model(config):
 
             # AMP Forward Pass
             with torch.amp.autocast('cuda', dtype=torch.float16):
-                # Run the tensors through the encoder, decoder and the projection layer
-                encoder_output = model.module.encode(encoder_input, encoder_mask) # (batch_size, seq_len, d_model)
-                decoder_output = model.module.decode(decoder_input, encoder_output, encoder_mask, decoder_mask) # (batch_size, seq_len, d_model)
-                proj_output = model.module.project(decoder_output) # (batch_size, seq_len, vocab_size)
-            
+                # Run the tensors through the model
+                proj_output = model(encoder_input, decoder_input, encoder_mask, decoder_mask) # (batch_size, seq_len, vocab_size)
                 loss = loss_fn(proj_output.view(-1, tokenizer.get_vocab_size()), label.view(-1))
             
             # AMP Backward and Optimization Step
