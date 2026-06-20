@@ -207,7 +207,7 @@ def train_model(config):
         model_filename = get_weights_path(config, config['preload'])
         print_msg(f"Preloading model {model_filename}")
 
-        state = torch.load(model_filename, map_location=device)
+        state = torch.load(model_filename, map_location=device, weights_only=True)
         model.module.load_state_dict(state['model_state_dict'])
         scheduler.load_state_dict(state['scheduler_state_dict'])
         optimiser.load_state_dict(state['optimizer_state_dict'])
@@ -273,13 +273,6 @@ def train_model(config):
 
             if rank == 0:
                 checkpoint_path = get_weights_path(config, epoch)
-
-                # Remove previous models
-                prev_weights = glob.glob(str(Path(config["model_folder"]) / f"{config['model_basename']}*.pt"))
-                for f in prev_weights:
-                    if Path(f).exists():
-                        os.remove(f)
-
                 torch.save({
                     "epoch": epoch,
                     "model_state_dict": model.state_dict(),
@@ -287,6 +280,13 @@ def train_model(config):
                     "scheduler_state_dict": scheduler.state_dict(), # Add this
                     "global_step": global_step
                 }, checkpoint_path)
+
+                # Remove previous models
+                prev_weights = glob.glob(str(Path(config["model_folder"]) / f"{config['model_basename']}*.pt"))
+                for f in prev_weights:
+                    if Path(f).exists():
+                        os.remove(f)
+
                 print_msg(f"Saved checkpoint to {checkpoint_path}")
         else:
             print_msg(f"Epoch {epoch}: Loss did not improve from {best_loss}")
