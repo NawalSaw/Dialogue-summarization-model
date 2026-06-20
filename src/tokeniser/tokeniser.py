@@ -20,7 +20,21 @@ def get_corpus(dataset, batch_size=1000):
 
 def get_or_create_tokenizer(config, dataset, batch_size=1000):
     tokenizer_path = Path(config['tokenizer_path'])
-    
+    special_tokens = [
+        "[UNK]", 
+        "[PAD]", 
+        "[BOS]", 
+        "[EOS]", 
+        "<SPEAKER_1>", 
+        "<SPEAKER_2>", 
+        "<SPEAKER_3>", 
+        "<SPEAKER_4>", 
+        "<SPEAKER_5>", 
+        "<SPEAKER_6>", 
+        "<TURN>", 
+        "</TURN>"
+    ]
+
     if not tokenizer_path.exists():
         tokenizer = Tokenizer(BPE(unk_token="[UNK]"))
         tokenizer.pre_tokenizer = Sequence([
@@ -30,7 +44,7 @@ def get_or_create_tokenizer(config, dataset, batch_size=1000):
         ])
         tokenizer.normalizer = normalizers.Sequence([NFD(), Lowercase(), StripAccents()])
 
-        trainer = BpeTrainer(special_tokens=["[UNK]", "[PAD]", "[BOS]", "[EOS]"], vocab_size=8192, min_frequency=2)
+        trainer = BpeTrainer(special_tokens=special_tokens, vocab_size=16384, min_frequency=2)
 
         tokenizer.train_from_iterator(get_corpus(dataset, batch_size), trainer=trainer)
         

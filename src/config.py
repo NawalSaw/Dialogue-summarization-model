@@ -7,7 +7,7 @@ def get_config():
         "heads_num": 8,
         "dropout": 0.1,
         "num_layers": 6,
-        "src_seq_len": 320,
+        "src_seq_len": 340,
         "tgt_seq_len": 72,
         "batch_size": 32,
         "model_folder": "weights",

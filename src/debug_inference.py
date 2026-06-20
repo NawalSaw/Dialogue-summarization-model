@@ -9,27 +9,50 @@ def main():
 
     _, _, test_dataloader, tokenizer = get_dataset_tokenizer(config)
 
-    model = get_model(config, tokenizer.get_vocab_size()).to(device)
-    print("Model loaded")
+    # model = get_model(config, tokenizer.get_vocab_size()).to(device)
+    # print("Model loaded")
 
-    checkpoint = torch.load("weights/tmodel_24.pt", map_location=device)
-    print("Checkpoint loaded")
+    # checkpoint = torch.load("weights/tmodel_24.pt", map_location=device)
+    # print("Checkpoint loaded")
 
-    model.load_state_dict(checkpoint['model_state_dict'])
-    print("Model loaded")
+    # model.load_state_dict(checkpoint['model_state_dict'])
+    # print("Model loaded")
 
-    model.eval()
+    # model.eval()
 
     for batch in test_dataloader:
         encoder_input = batch["encoder_input"].to(device)
+        src_text = batch["src_text"]
+        tgt_text = batch["tgt_text"]
         src_mask = batch["encoder_mask"].to(device)
-        greedy_decode_output = greedy_decode(model, tokenizer, encoder_input, src_mask, config['src_seq_len'], config['tgt_seq_len'], device)
-        
-        print("Output:", greedy_decode_output)
-        print("Label:", batch["label"])
 
-        print("decoded_output:", tokenizer.decode(greedy_decode_output.tolist()))
-        print("decoded_label:", tokenizer.decode(batch["label"][0].tolist()))
+        print("PAD:", tokenizer.token_to_id("[PAD]"))
+        print("BOS:", tokenizer.token_to_id("[BOS]"))
+        print("EOS:", tokenizer.token_to_id("[EOS]"))
+        print("UNK:", tokenizer.token_to_id("[UNK]"))
+        print("SPEAKER_1:", tokenizer.token_to_id("<SPEAKER_1>"))
+        print("SPEAKER_2:", tokenizer.token_to_id("<SPEAKER_2>"))
+        print("SPEAKER_3:", tokenizer.token_to_id("<SPEAKER_3>"))
+        print("SPEAKER_4:", tokenizer.token_to_id("<SPEAKER_4>"))
+        print("SPEAKER_5:", tokenizer.token_to_id("<SPEAKER_5>"))
+        print("SPEAKER_6:", tokenizer.token_to_id("<SPEAKER_6>"))
+        print("TURN:", tokenizer.token_to_id("<TURN>"))
+        print("END_TURN:", tokenizer.token_to_id("</TURN>"))
+        print()
+
+        print("Source Tokens:")
+        print(encoder_input[0])
+        print("Target Tokens:")
+        print(batch["decoder_input"][0])
+
+        print("Source Text:")
+        print(str(tokenizer.decode(encoder_input[0].tolist())))
+        print(src_text[0])
+        print("Target Text:")
+        print(str(tokenizer.decode(batch["label"][0].tolist())))
+        print(tgt_text)
+            
+
         break
 
 

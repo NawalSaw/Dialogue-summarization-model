@@ -16,8 +16,8 @@ class Transformer(nn.Module):
         self.vocab_size = vocab_size
         self.d_ff = d_model * 4
 
-        self.src_embedding = Embedding(d_model, vocab_size)
-        self.tgt_embedding = Embedding(d_model, vocab_size)
+        self.embedding = Embedding(d_model, vocab_size)
+        # self.tgt_embedding = Embedding(d_model, vocab_size)
 
         self.src_positional_encoding = SinusoidalPositionalEncoding(d_model, seq_len=src_seq_len, dropout=dropout)
         self.tgt_positional_encoding = SinusoidalPositionalEncoding(d_model, seq_len=tgt_seq_len, dropout=dropout)
@@ -29,7 +29,7 @@ class Transformer(nn.Module):
         
     def encode(self, x, src_mask):
         # shape x -> [batch_size, seq_len] 
-        x = self.src_embedding(x)
+        x = self.embedding(x)
         # shape x -> [batch_size, seq_len, d_model] 
         x = self.src_positional_encoding(x)
         # shape x -> [batch_size, seq_len, d_model] 
@@ -37,7 +37,7 @@ class Transformer(nn.Module):
         return x
 
     def decode(self, x, encoder_output, src_mask, tgt_mask):
-        x = self.tgt_embedding(x)
+        x = self.embedding(x)
         x = self.tgt_positional_encoding(x)
         x = self.decoder(x, encoder_output, src_mask=src_mask, tgt_mask=tgt_mask)
         return x
