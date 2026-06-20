@@ -17,39 +17,9 @@ class SamsumDataset(Dataset):
     def __len__(self):
         return len(self.dataset)
 
-    def replace_speakers(self, dialogue):
-        lines = dialogue.split("\n")
-
-        speaker_map = {}
-        processed = []
-
-        for line in lines:
-            line = line.strip()
-
-            if not line:
-                continue
-
-            if ":" not in line:
-                processed.append(line)
-                continue
-
-            speaker, utterance = line.split(":", 1)
-
-            speaker = speaker.strip()
-            utterance = utterance.strip()
-
-            if speaker not in speaker_map:
-                speaker_map[speaker] = len(speaker_map) + 1
-
-            processed.append(
-                f"<SPEAKER_{speaker_map[speaker]}> <TURN>{utterance}</TURN>"
-            )
-
-        return "\n".join(processed)
-
     def __getitem__(self, index):
         src_target_pair = self.dataset[index]
-        src_text = self.replace_speakers(src_target_pair["dialogue"])
+        src_text = src_target_pair["dialogue"]
         tgt_text = src_target_pair["summary"]
         
         src_encoded = self.tokenizer.encode(src_text)
@@ -113,6 +83,3 @@ class SamsumDataset(Dataset):
 def causal_mask(size):
     mask = torch.triu(torch.ones((1, size, size)), diagonal=1).type(torch.int)
     return mask == 0
-
-def get_speaker_index(speaker_id):
-    return f"<SPEAKER_{speaker_id}>"

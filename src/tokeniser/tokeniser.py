@@ -25,14 +25,6 @@ def get_or_create_tokenizer(config, dataset, batch_size=1000):
         "[PAD]", 
         "[BOS]", 
         "[EOS]", 
-        "<SPEAKER_1>", 
-        "<SPEAKER_2>", 
-        "<SPEAKER_3>", 
-        "<SPEAKER_4>", 
-        "<SPEAKER_5>", 
-        "<SPEAKER_6>", 
-        "<TURN>", 
-        "</TURN>"
     ]
 
     if not tokenizer_path.exists():

@@ -248,13 +248,12 @@ def train_model(config):
             loss = loss / accumulation_steps
             loss_sum += raw_loss
             scaler.scale(loss).backward()
-            scheduler.step()
-                 
-            if (i + 1) % accumulation_steps != 0:
+
+            if (i + 1) % accumulation_steps == 0:
                 scaler.step(optimiser)
                 scaler.update()
                 optimiser.zero_grad(set_to_none=True)
-
+                scheduler.step()
             global_step += 1
 
             if rank == 0:
@@ -276,20 +275,21 @@ def train_model(config):
             patience_counter = 0
 
             if rank == 0:
-                checkpoint_path = get_weights_path(config, epoch)
-                torch.save({
-                    "epoch": epoch,
-                    "model_state_dict": model.state_dict(),
-                    "optimizer_state_dict": optimiser.state_dict(),
-                    "scheduler_state_dict": scheduler.state_dict(), # Add this
-                    "global_step": global_step
-                }, checkpoint_path)
-
                 # Remove previous models
                 prev_weights = glob.glob(str(Path(config["model_folder"]) / f"{config['model_basename']}*.pt"))
                 for f in prev_weights:
                     if Path(f).exists():
                         os.remove(f)
+
+                checkpoint_path = get_weights_path(config, epoch)
+                torch.save({
+                    "epoch": epoch,
+                    "model_state_dict": model.module.state_dict(),
+                    "optimizer_state_dict": optimiser.state_dict(),
+                    "scheduler_state_dict": scheduler.state_dict(), # Add this
+                    "global_step": global_step
+                }, checkpoint_path)
+
 
                 print_msg(f"Saved checkpoint to {checkpoint_path}")
         else:
